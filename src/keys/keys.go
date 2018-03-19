@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"path"
 	//"bytes"
+	//"crypto/sha256"
 	"io/ioutil"
 	"log"
 	"runtime"
@@ -25,6 +27,7 @@ func GetUserPvKey() (string, error) {
 	}
 	if runtime.GOOS == "windows" {
 		pvkeyfile = usr.HomeDir + "\\.ssh\\id_rsa"
+		fmt.Println(path.Base(pvkeyfile))
 	} else {
 		pvkeyfile = usr.HomeDir + "/.ssh/id_rsa"
 	}
@@ -44,5 +47,4 @@ func main() {
 		log.Fatalf("failed to getuserkey: %v", err)
 	}
 	fmt.Println(pvkey)
-
 }

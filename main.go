@@ -2,11 +2,15 @@ package main
 
 import (
 	"flag"
-	//"fmt"
+	"fmt"
+	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
+	//"io"
 	"log"
-	"net"
 	"os"
+	"path"
+	"runtime"
+	"strings"
 	"time"
 )
 
@@ -18,52 +22,48 @@ var (
 	password = flag.String("p", "root12300.", "-p <密码> 登录用户密码")
 	op_type  = flag.String("m", "", "-m <模块名> 输入要执行的模块")
 	cmds     = flag.String("c", "", "-c <命令> 要执行的命令")
+	srcpath  = flag.String("s", "", "-s <目录或者文件路径> 要拷贝的文件或者目录")
+	dstpath  = flag.String("d", "", "-d <目录或文件> 拷贝到目标机器上文件或目录")
 )
 
 //设置客户端的连接登录认证方式，并取消服务端验证
-func ConntMth(passwd string) (session *ssh.Session, err error) {
-	var client *ssh.Client
+func ConntMth() (client *ssh.Client, err error) {
 	var config = &ssh.ClientConfig{
-		User: *username,
-		Auth: []ssh.AuthMethod{ssh.Password(passwd)},
-		HostKeyCallback: func(hostname string, remote net.Addr, pubkey ssh.PublicKey) error {
-			return nil
-		},
-		Timeout: 10 * time.Second,
+		User:            *username,
+		Auth:            []ssh.AuthMethod{ssh.Password(*password)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         30 * time.Second,
 	}
-
-	if client, err = ssh.Dial("tcp", *ip+":"+*port, config); err != nil {
-		return session, err
+	addr := fmt.Sprintf("%s:%s", *ip, *port)
+	if client, err = ssh.Dial("tcp", addr, config); err != nil {
+		return client, err
 	}
-
-	if session, err = client.NewSession(); err != nil {
-		return session, err
-	}
-
-	return session, nil
+	return client, nil
 }
 
-//交互模式
-func SshActive(sen *ssh.Session) error {
-	sen.Stdout = os.Stdout
-	sen.Stderr = os.Stderr
-	sen.Stdin = os.Stdin
+//远程登录进行交互式操作
+func SshActive(sshclient *ssh.Client) error {
+	session, err := sshclient.NewSession()
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+	session.Stdout = os.Stdout
+	session.Stderr = os.Stderr
+	session.Stdin = os.Stdin
 
 	modes := ssh.TerminalModes{
 		ssh.ECHO:          0,
 		ssh.TTY_OP_ISPEED: 14400,
 		ssh.TTY_OP_OSPEED: 14400,
 	}
-
-	if err := sen.RequestPty("xterm", 25, 80, modes); err != nil {
+	if err := session.RequestPty("xterm", 25, 80, modes); err != nil {
 		return err
 	}
-
-	if err := sen.Shell(); err != nil {
+	if err := session.Shell(); err != nil {
 		return err
 	}
-
-	if err := sen.Wait(); err != nil {
+	if err := session.Wait(); err != nil {
 		return err
 	}
 	return nil
@@ -71,12 +71,53 @@ func SshActive(sen *ssh.Session) error {
 }
 
 //远程命令操作
-func SshCmd(sen *ssh.Session, command string) error {
-	sen.Stdout = os.Stdout
-	sen.Stderr = os.Stderr
-
-	if err := sen.Run(command); err != nil {
+func SshCmd(sshclient *ssh.Client, command string) error {
+	session, err := sshclient.NewSession()
+	if err != nil {
 		return err
+	}
+	defer session.Close()
+	session.Stdout = os.Stdout
+	session.Stderr = os.Stderr
+	if err := session.Run(command); err != nil {
+		return err
+	}
+	return nil
+}
+
+//拷贝文件和目录
+func SshCopyPath(sshclient *ssh.Client, srcfilename, destdir string) error {
+	sftpclient, err := sftp.NewClient(sshclient)
+	if err != nil {
+		return err
+	}
+	defer sftpclient.Close()
+
+	srcFile, e := os.Open(srcfilename)
+	if e != nil {
+		return e
+	}
+	defer srcFile.Close()
+
+	if runtime.GOOS == "windows" {
+		sarr := strings.Split(destdir, "Git")
+		destdir = sarr[len(sarr)-1]
+	}
+	log.Println(destdir)
+	remotefile := path.Base(srcfilename)
+	dstFile, err := sftpclient.Create(path.Join(destdir, remotefile))
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	buf := make([]byte, 1024)
+	for {
+		n, _ := srcFile.Read(buf)
+		if n == 0 {
+			break
+		}
+		dstFile.Write(buf)
 	}
 	return nil
 }
@@ -105,20 +146,22 @@ func main() {
 		log.Fatal("i and m 不能为空")
 	}
 
-	session, err := ConntMth(*password)
+	sshclient, err := ConntMth()
 	ce(err, "ConntMth")
-	defer session.Close()
 
 	switch *op_type {
 	case "ssh":
-		err := SshActive(session)
+		err := SshActive(sshclient)
 		ce(err, "SshActive")
 	case "cmd":
-		err := SshCmd(session, *cmds)
+		err := SshCmd(sshclient, *cmds)
 		ce(err, "SshCmd")
+	case "copy":
+		err := SshCopyPath(sshclient, *srcpath, *dstpath)
+		ce(err, "Sshcopypath")
+		fmt.Println("文件拷贝完成")
 	default:
 		log.Fatalf("没有该模块: %s", *op_type)
-
 	}
 
 }
