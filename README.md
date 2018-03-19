@@ -34,6 +34,13 @@ check_log.py     log.py        reco_dns.sh                 t.py
 chk_log.py       main.go       source.200kbps.768x320.flv
 create_etcd.sh   node0.etcd    t2.py
 ```
+## *拷贝文件到远程机器*
+```
+$ ./main.exe -i 192.168.0.190 -m copy -s ../README.md -d /root/
+2018/03/19 18:38:01 /root/
+文件拷贝完成
+
+```
 ## *查看帮助*
 ```
 $ ./main.exe -h
