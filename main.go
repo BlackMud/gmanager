@@ -103,7 +103,6 @@ func SshCopyPath(sshclient *ssh.Client, srcfilename, destdir string) error {
 		sarr := strings.Split(destdir, "Git")
 		destdir = sarr[len(sarr)-1]
 	}
-	log.Println(destdir)
 	remotefile := path.Base(srcfilename)
 	dstFile, err := sftpclient.Create(path.Join(destdir, remotefile))
 	if err != nil {
@@ -142,8 +141,8 @@ func main() {
 	}
 
 	flag.Parse()
-	if (*ip == "") || (*op_type == "") {
-		log.Fatal("i and m 不能为空")
+	if *ip == "" {
+		log.Fatal("i不能为空")
 	}
 
 	sshclient, err := ConntMth()
@@ -159,7 +158,7 @@ func main() {
 	case "copy":
 		err := SshCopyPath(sshclient, *srcpath, *dstpath)
 		ce(err, "Sshcopypath")
-		fmt.Println("文件拷贝完成")
+		log.Println("文件拷贝完成")
 	default:
 		log.Fatalf("没有该模块: %s", *op_type)
 	}
