@@ -185,11 +185,12 @@ func main() {
 		status = "copy"
 		err := SshCopyPath(sshclient, status, *srcpath, *dstpath)
 		ce(err, "Sshcopypath")
-		log.Println("文件拷贝完成")
+		log.Println("文件上传完成")
 	case "get":
 		status = "get"
 		err = SshCopyPath(sshclient, status, *srcpath, *dstpath)
 		ce(err, "SshCopyPath")
+		log.Println("文件下载完成")
 	default:
 		log.Fatalf("没有该模块: %s", *op_type)
 	}
