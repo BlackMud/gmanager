@@ -86,37 +86,61 @@ func SshCmd(sshclient *ssh.Client, command string) error {
 }
 
 //拷贝文件和目录
-func SshCopyPath(sshclient *ssh.Client, srcfilename, destdir string) error {
+func SshCopyPath(sshclient *ssh.Client, osty, srcpath, dstpath string) error {
 	sftpclient, err := sftp.NewClient(sshclient)
 	if err != nil {
 		return err
 	}
 	defer sftpclient.Close()
 
-	srcFile, e := os.Open(srcfilename)
-	if e != nil {
-		return e
-	}
-	defer srcFile.Close()
-
 	if runtime.GOOS == "windows" {
-		sarr := strings.Split(destdir, "Git")
-		destdir = sarr[len(sarr)-1]
+		sarr := strings.Split(dstpath, "Git")
+		dstpath = sarr[len(sarr)-1]
 	}
-	remotefile := path.Base(srcfilename)
-	dstFile, err := sftpclient.Create(path.Join(destdir, remotefile))
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
-
 	buf := make([]byte, 1024)
-	for {
-		n, _ := srcFile.Read(buf)
-		if n == 0 {
-			break
+
+	if osty == "copy" {
+		srcFile, e := os.Open(srcpath)
+		if e != nil {
+			return e
 		}
-		dstFile.Write(buf)
+		defer srcFile.Close()
+
+		remotefile := path.Base(srcpath)
+		dstFile, err := sftpclient.Create(path.Join(dstpath, remotefile))
+		if err != nil {
+			return err
+		}
+		defer dstFile.Close()
+
+		for {
+			n, _ := srcFile.Read(buf)
+			if n == 0 {
+				break
+			}
+			dstFile.Write(buf)
+		}
+	} else {
+		srcFile, e := sftpclient.Open(dstpath)
+		if e != nil {
+			return e
+		}
+		defer srcFile.Close()
+
+		localfile := path.Base(dstpath)
+		dstFile, err := os.Create(path.Join(srcpath, localfile))
+		if err != nil {
+			return err
+		}
+		defer dstFile.Close()
+
+		for {
+			n, _ := srcFile.Read(buf)
+			if n == 0 {
+				break
+			}
+			dstFile.Write(buf)
+		}
 	}
 	return nil
 }
@@ -148,6 +172,8 @@ func main() {
 	sshclient, err := ConntMth()
 	ce(err, "ConntMth")
 
+	var status string
+
 	switch *op_type {
 	case "ssh":
 		err := SshActive(sshclient)
@@ -156,9 +182,14 @@ func main() {
 		err := SshCmd(sshclient, *cmds)
 		ce(err, "SshCmd")
 	case "copy":
-		err := SshCopyPath(sshclient, *srcpath, *dstpath)
+		status = "copy"
+		err := SshCopyPath(sshclient, status, *srcpath, *dstpath)
 		ce(err, "Sshcopypath")
 		log.Println("文件拷贝完成")
+	case "get":
+		status = "get"
+		err = SshCopyPath(sshclient, status, *srcpath, *dstpath)
+		ce(err, "SshCopyPath")
 	default:
 		log.Fatalf("没有该模块: %s", *op_type)
 	}
