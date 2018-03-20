@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -100,61 +101,86 @@ func SshCopyPath(sshclient *ssh.Client, osty, srcpath, dstpath string) error {
 	buf := make([]byte, 1024)
 
 	if osty == "copy" {
-		srcFile, e := os.Open(srcpath)
-		if e != nil {
-			return e
-		}
-		defer srcFile.Close()
+		err := filepath.Walk(srcpath, func(pth string, f os.FileInfo, err error) error {
+			if f == nil {
+				return err
+			}
 
-		remotefile := path.Base(srcpath)
-		dstFile, err := sftpclient.Create(path.Join(dstpath, remotefile))
+			if f.IsDir() {
+				remotepath := path.Base(pth)
+				if err = sftpclient.Mkdir(path.Join(dstpath, remotepath)); err != nil {
+					return err
+				}
+				return nil
+			}
+
+			remotefile := path.Base(pth)
+			srcFile, e := os.Open(pth)
+			if e != nil {
+				return e
+			}
+			defer srcFile.Close()
+
+			dstFile, err := sftpclient.Create(path.Join(dstpath, remotefile))
+			if err != nil {
+				return err
+			}
+			defer dstFile.Close()
+
+			for {
+				n, _ := srcFile.Read(buf)
+				if n == 0 {
+					break
+				}
+				dstFile.Write(buf)
+			}
+			return nil
+		})
 		if err != nil {
 			return err
 		}
-		defer dstFile.Close()
 
-		for {
-			n, _ := srcFile.Read(buf)
-			if n == 0 {
-				break
-			}
-			dstFile.Write(buf)
-		}
 	} else {
-		srcFile, e := sftpclient.Open(dstpath)
-		if e != nil {
-			return e
-		}
-		defer srcFile.Close()
+		err := filepath.Walk(dstpath, func(pth string, f os.FileInfo, err error) error {
+			if f == nil {
+				return err
+			}
 
-		localfile := path.Base(dstpath)
-		dstFile, err := os.Create(path.Join(srcpath, localfile))
+			if f.IsDir() {
+				localdir := path.Base(pth)
+				if err := os.Mkdir(path.Join(srcpath, localdir), 0644); err != nil {
+					return err
+				}
+				return nil
+			}
+
+			srcFile, e := sftpclient.Open(pth)
+			if e != nil {
+				return e
+			}
+			defer srcFile.Close()
+
+			srcfilename := path.Base(pth)
+			dstFile, err := os.Create(path.Join(srcpath, srcfilename))
+			if err != nil {
+				return err
+			}
+			defer dstFile.Close()
+
+			for {
+				n, _ := srcFile.Read(buf)
+				if n == 0 {
+					break
+				}
+				dstFile.Write(buf)
+			}
+			return nil
+		})
 		if err != nil {
 			return err
-		}
-		defer dstFile.Close()
-
-		for {
-			n, _ := srcFile.Read(buf)
-			if n == 0 {
-				break
-			}
-			dstFile.Write(buf)
 		}
 	}
 	return nil
-}
-
-//判断源文件或者目录是否存在
-func PathExist(path string) (bool, error) {
-	_, err := os.Stat(path)
-	if err == nil {
-		return true, nil
-	}
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	return false, nil
 }
 
 func main() {
