@@ -100,28 +100,36 @@ func SshCopyPath(sshclient *ssh.Client, osty, srcpath, dstpath string) error {
 	}
 	buf := make([]byte, 1024)
 
+	str := srcpath
+
 	if osty == "copy" {
 		err := filepath.Walk(srcpath, func(pth string, f os.FileInfo, err error) error {
+			if runtime.GOOS == "windows" {
+				sarr := strings.Split(pth, "\\")
+				pth = strings.Join(sarr, "/")
+			}
+			sli := strings.Split(pth, str)
+
 			if f == nil {
 				return err
 			}
 
 			if f.IsDir() {
-				remotepath := path.Base(pth)
-				if err = sftpclient.Mkdir(path.Join(dstpath, remotepath)); err != nil {
-					return err
+				dstDir := path.Join(dstpath, path.Base(str)+sli[1])
+				fmt.Println(dstDir)
+				if err = sftpclient.Mkdir(dstDir); err != nil {
+					return nil
 				}
 				return nil
 			}
 
-			remotefile := path.Base(pth)
 			srcFile, e := os.Open(pth)
 			if e != nil {
 				return e
 			}
 			defer srcFile.Close()
 
-			dstFile, err := sftpclient.Create(path.Join(dstpath, remotefile))
+			dstFile, err := sftpclient.Create(path.Join(dstpath, path.Base(str)+sli[1]))
 			if err != nil {
 				return err
 			}
