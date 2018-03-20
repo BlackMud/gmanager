@@ -1,4 +1,4 @@
-package main
+package key
 
 import (
 	"fmt"
@@ -41,6 +41,7 @@ func GetUserPvKey() (string, error) {
 	return string(b), nil
 }
 
+/*
 func main() {
 	pvkey, err := GetUserPvKey()
 	if err != nil {
@@ -48,3 +49,4 @@ func main() {
 	}
 	fmt.Println(pvkey)
 }
+*/

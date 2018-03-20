@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
-	//"io"
+	"key"
 	"log"
 	"os"
 	"path"
@@ -86,107 +86,112 @@ func SshCmd(sshclient *ssh.Client, command string) error {
 	return nil
 }
 
-//拷贝文件和目录
-func SshCopyPath(sshclient *ssh.Client, osty, srcpath, dstpath string) error {
+//上传文件
+func SshCopyPath(sshclient *ssh.Client, srcpath, dstpath string) error {
 	sftpclient, err := sftp.NewClient(sshclient)
 	if err != nil {
 		return err
 	}
 	defer sftpclient.Close()
 
-	if runtime.GOOS == "windows" {
-		sarr := strings.Split(dstpath, "Git")
-		dstpath = sarr[len(sarr)-1]
-	}
 	buf := make([]byte, 1024)
-
 	str := srcpath
 
-	if osty == "copy" {
-		err := filepath.Walk(srcpath, func(pth string, f os.FileInfo, err error) error {
-			if runtime.GOOS == "windows" {
-				sarr := strings.Split(pth, "\\")
-				pth = strings.Join(sarr, "/")
-			}
-			sli := strings.Split(pth, str)
+	err = filepath.Walk(srcpath, func(pth string, f os.FileInfo, err error) error {
+		if runtime.GOOS == "windows" {
+			sarr := strings.Split(pth, "\\")
+			pth = strings.Join(sarr, "/")
+		}
+		sli := strings.Split(pth, str)
 
-			if f == nil {
-				return err
-			}
-
-			if f.IsDir() {
-				dstDir := path.Join(dstpath, path.Base(str)+sli[1])
-				fmt.Println(dstDir)
-				if err = sftpclient.Mkdir(dstDir); err != nil {
-					return nil
-				}
-				return nil
-			}
-
-			srcFile, e := os.Open(pth)
-			if e != nil {
-				return e
-			}
-			defer srcFile.Close()
-
-			dstFile, err := sftpclient.Create(path.Join(dstpath, path.Base(str)+sli[1]))
-			if err != nil {
-				return err
-			}
-			defer dstFile.Close()
-
-			for {
-				n, _ := srcFile.Read(buf)
-				if n == 0 {
-					break
-				}
-				dstFile.Write(buf)
-			}
-			return nil
-		})
-		if err != nil {
+		if f == nil {
 			return err
 		}
 
-	} else {
-		err := filepath.Walk(dstpath, func(pth string, f os.FileInfo, err error) error {
-			if f == nil {
-				return err
-			}
-
-			if f.IsDir() {
-				localdir := path.Base(pth)
-				if err := os.Mkdir(path.Join(srcpath, localdir), 0644); err != nil {
-					return err
-				}
+		if f.IsDir() {
+			dstDir := path.Join(dstpath, path.Base(str)+sli[1])
+			fmt.Println(dstDir)
+			if err = sftpclient.Mkdir(dstDir); err != nil {
 				return nil
 			}
-
-			srcFile, e := sftpclient.Open(pth)
-			if e != nil {
-				return e
-			}
-			defer srcFile.Close()
-
-			srcfilename := path.Base(pth)
-			dstFile, err := os.Create(path.Join(srcpath, srcfilename))
-			if err != nil {
-				return err
-			}
-			defer dstFile.Close()
-
-			for {
-				n, _ := srcFile.Read(buf)
-				if n == 0 {
-					break
-				}
-				dstFile.Write(buf)
-			}
 			return nil
-		})
+		}
+
+		srcFile, e := os.Open(pth)
+		if e != nil {
+			return e
+		}
+		defer srcFile.Close()
+
+		dstFile, err := sftpclient.Create(path.Join(dstpath, path.Base(str)+sli[1]))
 		if err != nil {
 			return err
 		}
+		defer dstFile.Close()
+
+		for {
+			n, _ := srcFile.Read(buf)
+			if n == 0 {
+				break
+			}
+			dstFile.Write(buf)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+//下载文件
+func SshGetFile(sshclient *ssh.Client, srcpath, dstpath string) error {
+	sftpclient, err := sftp.NewClient(sshclient)
+	if err != nil {
+		return nil
+	}
+	sftpclient.Close()
+
+	buf := make([]byte, 1024)
+	//str := srcpath
+
+	err = filepath.Walk(dstpath, func(pth string, f os.FileInfo, err error) error {
+		if f == nil {
+			return err
+		}
+
+		if f.IsDir() {
+			localdir := path.Base(pth)
+			if err := os.Mkdir(path.Join(srcpath, localdir), 0644); err != nil {
+				return err
+			}
+			return nil
+		}
+
+		srcFile, e := sftpclient.Open(pth)
+		if e != nil {
+			return e
+		}
+		defer srcFile.Close()
+
+		srcfilename := path.Base(pth)
+		dstFile, err := os.Create(path.Join(srcpath, srcfilename))
+		if err != nil {
+			return err
+		}
+		defer dstFile.Close()
+
+		for {
+			n, _ := srcFile.Read(buf)
+			if n == 0 {
+				break
+			}
+			dstFile.Write(buf)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -206,25 +211,33 @@ func main() {
 	sshclient, err := ConntMth()
 	ce(err, "ConntMth")
 
-	var status string
-
 	switch *op_type {
 	case "ssh":
 		err := SshActive(sshclient)
 		ce(err, "SshActive")
+
 	case "cmd":
 		err := SshCmd(sshclient, *cmds)
 		ce(err, "SshCmd")
+
 	case "copy":
-		status = "copy"
-		err := SshCopyPath(sshclient, status, *srcpath, *dstpath)
+		if runtime.GOOS == "windows" {
+			s := strings.Split(*dstpath, "Git")
+			*dstpath = s[len(s)-1]
+		}
+		err := SshCopyPath(sshclient, *srcpath, *dstpath)
 		ce(err, "Sshcopypath")
-		log.Println("文件上传完成")
+		log.Println("上传完成")
+
 	case "get":
-		status = "get"
-		err = SshCopyPath(sshclient, status, *srcpath, *dstpath)
-		ce(err, "SshCopyPath")
-		log.Println("文件下载完成")
+		if runtime.GOOS == "windows" {
+			s := strings.Split(*dstpath, "Git")
+			*dstpath = s[len(s)-1]
+		}
+		err = SshGetFile(sshclient, *srcpath, *dstpath)
+		ce(err, "SshGetFile")
+		log.Println("下载完成")
+
 	default:
 		log.Fatalf("没有该模块: %s", *op_type)
 	}
