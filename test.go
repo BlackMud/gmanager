@@ -3,29 +3,21 @@ package main
 import (
 	"fmt"
 	"os"
+	//"path"
+	"strings"
 	//"path/filepath"
 )
 
 func main() {
+	//filenm := "./README.md"
+	dir := "./src"
+	s, _ := os.Stat(dir)
+	fmt.Println(s.Name())
 
-	filenm := "./README.md"
-	//dirnm := "./src"
+	addr := "../usr/local/src..\\nihao\\wo"
 
-	fs, err := os.Stat(filenm)
-	if err != nil {
-		fmt.Printf("err :%v\n", err)
-		return
-	}
-
-	if fs.IsDir() {
-		return
-	}
-
-	fd, err := os.Open()
-	if err != nil {
-		fmt.Println(err)
-	}
-	defer fd.Close()
+	str := strings.Split(addr, "\\")
+	fmt.Println(strings.Join(str, "/"))
 
 	/*
 		if dirstats.IsDir() {
