@@ -3,39 +3,86 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/pkg/sftp"
-	"golang.org/x/crypto/ssh"
-	"key"
+	"io/ioutil"
 	"log"
 	"os"
+	"os/user"
 	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/pkg/sftp"
+	"golang.org/x/crypto/ssh"
+	//"golang.org/x/crypto/ssh/agent"
 )
 
 //自定义命令行的参数变量
 var (
+	username = flag.String("user", "root", "-u <用户名> 默认用户:root")
+	password = flag.String("pass", "", "-p <密码> 登录用户密码")
 	ip       = flag.String("i", "", "-i <ip地址> 必须输入ip地址")
 	port     = flag.String("P", "22", "-P <端口> 默认端口22")
-	username = flag.String("u", "root", "-u <用户名> 默认用户:root")
-	password = flag.String("p", "root12300.", "-p <密码> 登录用户密码")
 	op_type  = flag.String("m", "", "-m <模块名> 输入要执行的模块")
 	cmds     = flag.String("c", "", "-c <命令> 要执行的命令")
 	srcpath  = flag.String("s", "", "-s <目录或者文件路径> 要拷贝的文件或者目录")
 	dstpath  = flag.String("d", "", "-d <目录或文件> 拷贝到目标机器上文件或目录")
 )
 
+//获取私钥签名
+func GetUserKeySign() ([]byte, error) {
+	var pvkeyfile string
+	usr, err := user.Current()
+	if err != nil {
+		log.Fatalf("failed to get keys home: %v", err)
+	}
+
+	if runtime.GOOS == "windows" {
+		pvkeyfile = usr.HomeDir + "\\.ssh\\id_rsa"
+	} else {
+		pvkeyfile = usr.HomeDir + "/.ssh/id_rsa"
+	}
+	if _, err = os.Stat(pvkeyfile); err != nil {
+		log.Fatalf("file is not exists: %v", err)
+	}
+
+	keybytes, e := ioutil.ReadFile(pvkeyfile)
+	if e != nil {
+		log.Fatalf("failed to read file: %v", e)
+	}
+
+	return keybytes, nil
+}
+
 //设置客户端的连接登录认证方式，并取消服务端验证
 func ConntMth() (client *ssh.Client, err error) {
+	var auths []ssh.AuthMethod
+	var keybs []byte
+
+	addr := fmt.Sprintf("%s:%s", *ip, *port)
+	if *password != "" {
+		auths = append(auths, ssh.Password(*password))
+	} else {
+		keybs, err = GetUserKeySign()
+		if err != nil {
+			log.Fatalf("uanble to get private key: %v", err)
+		}
+		signer, err := ssh.ParsePrivateKey(keybs)
+		if err != nil {
+			log.Fatalf("uanble to parse private key: %v", err)
+		}
+		auths = append(auths, ssh.PublicKeys(signer))
+	}
+
 	var config = &ssh.ClientConfig{
 		User:            *username,
-		Auth:            []ssh.AuthMethod{ssh.Password(*password)},
+		Auth:            auths,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         30 * time.Second,
+		//HostKeyCallback: ssh.FixedHostKey(hostkey),
+		Timeout: 30 * time.Second,
 	}
-	addr := fmt.Sprintf("%s:%s", *ip, *port)
+
 	if client, err = ssh.Dial("tcp", addr, config); err != nil {
 		return client, err
 	}
